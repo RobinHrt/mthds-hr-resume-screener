@@ -1,0 +1,12 @@
+[package]
+name = "hr_resume_screener"
+address = "github.com/RobinHrt/mthds-hr-resume-screener"
+display_name = "HR Resume Screener"
+version = "1.0.0"
+description = "Screen and score a batch of resumes against job requirements"
+license = "MIT"
+mthds_version = ">=1.0.0"
+main_pipe = "resume_screening"
+
+[exports.hr_resume_screener]
+pipes = ["resume_screening", "screen_single_resume", "extract_resume", "score_candidate", "compile_screening_report"]

@@ -1,0 +1,19 @@
+{
+  "resumes": {
+    "concept": "native.Document",
+    "content": [
+      {
+        "url": "/path/to/resume1.pdf"
+      },
+      {
+        "url": "/path/to/resume2.pdf"
+      }
+    ]
+  },
+  "job_requirements": {
+    "concept": "native.Text",
+    "content": {
+      "text": "text_value"
+    }
+  }
+}

@@ -1,0 +1,124 @@
+domain    = "hr_resume_screener"
+description = "Screen and score a batch of resumes against job requirements, producing a ranked candidate report"
+main_pipe = "resume_screening"
+
+[concept.SkillMatch]
+description = "Rating of a candidate against a single required skill"
+
+[concept.SkillMatch.structure]
+skill_name = { type = "text", description = "Name of the required skill", required = true }
+rating     = { choices = ["strong match", "partial match", "no evidence"], description = "How well the candidate matches this skill", required = true }
+
+[concept.CandidateScore]
+description = "Comprehensive scored assessment of a single candidate against the job requirements"
+
+[concept.CandidateScore.structure]
+candidate_name       = { type = "text", description = "Full name of the candidate", required = true }
+contact_info         = { type = "text", description = "Contact information (email, phone)" }
+current_role         = { type = "text", description = "Current or most recent job title and company" }
+years_of_experience  = { type = "number", description = "Total years of relevant professional experience" }
+skills_match         = { type = "list", item_type = "concept", item_concept_ref = "hr_resume_screener.SkillMatch", description = "Rating for each required skill" }
+experience_relevance = { choices = ["highly relevant", "somewhat relevant", "tangential", "not relevant"], description = "How well their experience maps to the role", required = true }
+education_match      = { type = "text", description = "Education and degree relevance assessment" }
+certifications       = { type = "text", description = "Relevant certifications held" }
+red_flags            = { type = "text", description = "Employment gaps >12 months, job-hopping, missing required qualifications" }
+green_flags          = { type = "text", description = "Target company experience, open source contributions, relevant publications, career progression" }
+overall_fit          = { choices = ["strong fit", "good fit", "partial fit", "not a fit"], description = "Overall fit assessment for the role", required = true }
+recruiter_summary    = { type = "text", description = "Two-sentence summary for the recruiter", required = true }
+
+[concept.ScreeningReport]
+description = "Aggregate screening report for the entire applicant pool"
+
+[concept.ScreeningReport.structure]
+total_screened         = { type = "integer", description = "Total number of resumes screened", required = true }
+strong_fit_count       = { type = "integer", description = "Number of strong fit candidates" }
+good_fit_count         = { type = "integer", description = "Number of good fit candidates" }
+partial_fit_count      = { type = "integer", description = "Number of partial fit candidates" }
+not_a_fit_count        = { type = "integer", description = "Number of not a fit candidates" }
+ranked_candidates      = { type = "text", description = "Ranked list of all candidates, strong fit first, with scores and summaries", required = true }
+diversity_observations = { type = "text", description = "Observations on diversity of the candidate pool" }
+recommended_next_steps = { type = "text", description = "Recommended actions per fit tier", required = true }
+executive_summary      = { type = "text", description = "Brief executive summary for the hiring manager", required = true }
+
+# --- Pipes ---
+
+[pipe.resume_screening]
+type        = "PipeSequence"
+description = "Screen and rank a batch of resumes against job requirements"
+inputs      = { resumes = "Document[]", job_requirements = "Text" }
+output      = "ScreeningReport"
+steps = [
+    { pipe = "screen_single_resume", batch_over = "resumes", batch_as = "resume", result = "candidate_scores" },
+    { pipe = "compile_screening_report", result = "screening_report" },
+]
+
+[pipe.screen_single_resume]
+type        = "PipeSequence"
+description = "Extract and score a single resume against the job requirements"
+inputs      = { resume = "Document", job_requirements = "Text" }
+output      = "CandidateScore"
+steps = [
+    { pipe = "extract_resume", result = "pages" },
+    { pipe = "score_candidate", result = "candidate_score" },
+]
+
+[pipe.extract_resume]
+type        = "PipeExtract"
+description = "Extract text content from a resume document"
+inputs      = { resume = "Document" }
+output      = "Page[]"
+model       = "@default-text-from-pdf"
+
+[pipe.score_candidate]
+type        = "PipeLLM"
+description = "Score a single candidate against the job requirements"
+inputs      = { pages = "Page[]", job_requirements = "Text" }
+output      = "CandidateScore"
+model       = "$writing-factual"
+prompt      = """You are an experienced HR recruiter performing structured resume screening. Evaluate this candidate's resume against the job requirements. Be thorough, objective, and consistent.
+
+For each required skill in the job requirements, rate the candidate: strong match, partial match, or no evidence.
+
+Assess experience relevance: highly relevant, somewhat relevant, tangential, or not relevant.
+
+Flag red flags: employment gaps >12 months, job-hopping (<1 year average tenure), missing required qualifications.
+
+Flag green flags: target company experience, open source contributions, relevant publications, strong career progression.
+
+Provide an overall fit: strong fit, good fit, partial fit, or not a fit.
+
+Write a two-sentence recruiter summary capturing the candidate's strongest selling point and any key concern.
+
+--- JOB REQUIREMENTS ---
+@job_requirements
+
+--- CANDIDATE RESUME ---
+@pages"""
+
+[pipe.compile_screening_report]
+type        = "PipeLLM"
+description = "Compile all candidate scores into a comprehensive screening report"
+inputs      = { candidate_scores = "CandidateScore[]", job_requirements = "Text" }
+output      = "ScreeningReport"
+model       = "$writing-factual"
+prompt      = """You are an HR director compiling resume screening results into a final report.
+
+Count candidates in each fit tier (strong fit, good fit, partial fit, not a fit).
+
+Rank all candidates from strongest to weakest with strong fit candidates first. For each, include name, overall fit, experience relevance, and recruiter summary.
+
+Note observations about pool diversity: range of experience levels, professional backgrounds, and industries represented.
+
+Provide recommended next steps per tier:
+- Strong fit: advance to phone screen immediately
+- Good fit: advance to phone screen
+- Partial fit: hold for review if pipeline thins
+- Not a fit: send rejection
+
+Write a brief executive summary for the hiring manager.
+
+--- JOB REQUIREMENTS ---
+@job_requirements
+
+--- ALL CANDIDATE SCORES ---
+@candidate_scores"""
